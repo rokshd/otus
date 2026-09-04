@@ -1,0 +1,26 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: default
+  name: vault-app-role
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: default
+  name: vault-app-rolebinding
+subjects:
+- kind: ServiceAccount
+  name: vault-app-sa
+  namespace: default
+roleRef:
+  kind: Role
+  name: vault-app-role
+  apiGroup: rbac.authorization.k8s.io
