@@ -1,26 +1,64 @@
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+apiVersion: v1
+kind: Pod
 metadata:
+  name: vault-agent-app
   namespace: default
-  name: vault-app-role
-rules:
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "list", "watch"]
-- apiGroups: [""]
-  resources: ["secrets"]
-  verbs: ["get"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  namespace: default
-  name: vault-app-rolebinding
-subjects:
-- kind: ServiceAccount
-  name: vault-app-sa
-  namespace: default
-roleRef:
-  kind: Role
-  name: vault-app-role
-  apiGroup: rbac.authorization.k8s.io
+  labels:
+    app: vault-agent-app
+  annotations:
+    vault.hashicorp.com/agent-inject: "true"
+    vault.hashicorp.com/role: "myapp-role"
+    
+    vault.hashicorp.com/agent-inject-secret-database: "secret/data/myapp/database"
+    vault.hashicorp.com/agent-inject-template-database: |
+      {{ with secret "secret/data/myapp/database" -}}
+      export DB_HOST="{{ .Data.data.host }}"
+      export DB_PORT="{{ .Data.data.port }}"
+      export DB_USERNAME="{{ .Data.data.username }}"
+      export DB_PASSWORD="{{ .Data.data.password }}"
+      export DB_NAME="{{ .Data.data.dbname }}"
+      {{- end }}
+    
+    vault.hashicorp.com/agent-inject-secret-api: "secret/data/myapp/api"
+    vault.hashicorp.com/agent-inject-template-api: |
+      {{ with secret "secret/data/myapp/api" -}}
+      export API_KEY="{{ .Data.data.api_key }}"
+      export API_URL="{{ .Data.data.api_url }}"
+      export API_TIMEOUT="{{ .Data.data.timeout }}"
+      {{- end }}
+    
+    vault.hashicorp.com/agent-cache-enable: "true"
+    vault.hashicorp.com/agent-cache-ttl: "30s"
+
+spec:
+  serviceAccountName: vault-app-sa
+  containers:
+  - name: app
+    image: alpine:latest
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        echo "⏳ Waiting for Vault secrets..."
+        while [ ! -f /vault/secrets/database ] || [ ! -f /vault/secrets/api ]; do
+          sleep 2
+        done
+        echo "✅ All secrets loaded!"
+        echo ""
+        echo "📦 Loading environment variables..."
+        source /vault/secrets/database
+        source /vault/secrets/api
+        echo ""
+        echo "🔐 Current environment:"
+        echo "----------------------------------------"
+        echo "DB_HOST=$DB_HOST"
+        echo "DB_PORT=$DB_PORT"
+        echo "DB_USERNAME=$DB_USERNAME"
+        echo "DB_PASSWORD=$DB_PASSWORD"
+        echo "DB_NAME=$DB_NAME"
+        echo "API_KEY=$API_KEY"
+        echo "API_URL=$API_URL"
+        echo "API_TIMEOUT=$API_TIMEOUT"
+        echo "----------------------------------------"
+        echo ""
+        echo "✅ Pod is ready! Keeping alive..."
+        tail -f /dev/null
